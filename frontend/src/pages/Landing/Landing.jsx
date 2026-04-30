@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { ShieldAlert, Activity, Users, Zap, CheckCircle2 } from "lucide-react";
-import Footer from "../components/Footer";
+import Footer from "../../components/Footer";
+import ScrambleTextPro from "./Matrix";
 
-// export default function Landing() {
+//  export default function Landing() {
 //   return (
 //     <div className="min-h-screen bg-[#0B1120] text-slate-200 selection:bg-cyan-500/30">
 //       {/* Navbar */}
@@ -198,164 +200,165 @@ import Footer from "../components/Footer";
 //     </div>
 //   );
 // }
-import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+
+import Tilt from "react-parallax-tilt";
+import Particles from "react-tsparticles";
+import { loadFull } from "tsparticles";
 
 export default function LandingPage() {
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [status, setStatus] = useState(0);
 
+  // Cursor glow
   useEffect(() => {
     const move = (e) => setPos({ x: e.clientX, y: e.clientY });
     window.addEventListener("mousemove", move);
     return () => window.removeEventListener("mousemove", move);
   }, []);
 
+  // Live dashboard simulation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStatus((prev) => (prev + 1) % 3);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const alerts = ["🚨 Server Down", "⚠️ High CPU", "✅ Resolved"];
+
+  const particlesInit = async (main) => {
+    await loadFull(main);
+  };
+
   return (
-    <div className="bg-[#0a0a0f] text-white relative overflow-hidden">
+    <div className="bg-[#050507] text-white relative overflow-hidden">
+      {/* 🌌 PARTICLES BACKGROUND */}
+      <Particles
+        init={particlesInit}
+        options={{
+          background: { color: "transparent" },
+          particles: {
+            number: { value: 40 },
+            size: { value: 2 },
+            move: { speed: 0.5 },
+            opacity: { value: 0.3 },
+          },
+        }}
+        className="absolute inset-0 -z-10"
+      />
+
       {/* 🔥 Cursor Glow */}
       <div
         className="fixed w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none z-50"
-        style={{
-          left: pos.x - 80,
-          top: pos.y - 80,
-        }}
+        style={{ left: pos.x - 80, top: pos.y - 80 }}
       />
-
-      {/* 🌌 Background Glow */}
-      <div className="absolute w-[600px] h-[600px] bg-purple-600/20 blur-[150px] top-0 left-0"></div>
-      <div className="absolute w-[500px] h-[500px] bg-blue-600/20 blur-[150px] bottom-0 right-0"></div>
 
       {/* 🚀 HERO */}
       <section className="min-h-screen flex flex-col justify-center items-center text-center px-6">
         <motion.h1
-          initial={{ opacity: 0, y: 80, scale: 0.9, filter: "blur(12px)" }}
-          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-          transition={{
-            duration: 1.2,
-            ease: [0.16, 1, 0.3, 1], // ultra smooth easing
-          }}
-          className="text-5xl md:text-6xl font-bold leading-tight"
+          initial={{ opacity: 0, y: 60 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1 }}
+          className="text-5xl md:text-7xl font-bold leading-tight text-center"
         >
-          Stop Chaos.{" "}
-          <motion.span
-            initial={{ opacity: 0, y: 50, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{
-              delay: 0.4,
-              duration: 1,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-500 text-transparent bg-clip-text"
-          >
-            Start Smart Response.
-          </motion.span>
+          <span className="text-white">Stop Chaos.</span>
+          <br />
+
+          <ScrambleTextPro />
         </motion.h1>
 
         <p className="text-gray-400 mt-6 max-w-xl">
-          AI-powered incident response platform that reduces downtime and helps
-          teams respond instantly in critical situations.
+          AI-powered incident response platform that reacts before damage
+          happens.
         </p>
 
+        {/* 🧲 Magnetic Buttons */}
         <div className="flex gap-4 mt-8">
-          <button className="px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl hover:scale-110 transition">
-            Get Started
-          </button>
-          <button className="px-6 py-3 border border-gray-600 rounded-xl hover:bg-white/10 transition">
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-lg hover:scale-110 transition"
+          >
+            Start Free Trial
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            className="px-6 py-3 border border-cyan-500/40 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition"
+          >
             Live Demo
-          </button>
+          </motion.button>
+        </div>
+
+        {/* 📊 TRUST */}
+        <div className="flex gap-10 mt-12 text-gray-400 text-sm">
+          <div>
+            <b className="text-white">99.99%</b> uptime
+          </div>
+          <div>
+            <b className="text-white">&lt;3s</b> response
+          </div>
+          <div>
+            <b className="text-white">500+</b> teams
+          </div>
         </div>
       </section>
 
-      {/* ⚡ PROBLEM */}
+      {/* ⚡ FEATURES WITH 3D TILT */}
       <section className="py-20 px-10 text-center">
-        <h2 className="text-3xl font-semibold mb-12">Why Systems Fail?</h2>
-
-        <div className="grid md:grid-cols-3 gap-8">
-          {[
-            "Delay = Chaos",
-            "Miscommunication = Loss",
-            "No Visibility = Downtime",
-          ].map((item, i) => (
-            <motion.div
-              whileHover={{ scale: 1.08 }}
-              key={i}
-              className="bg-white/5 border border-white/10 p-6 rounded-xl backdrop-blur-xl"
-            >
-              {item}
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* 🧠 FEATURES */}
-      <section className="py-20 px-10">
-        <h2 className="text-3xl text-center font-semibold mb-12">
-          Powerful Features
-        </h2>
+        <h2 className="text-3xl mb-12">Powerful Features</h2>
 
         <div className="grid md:grid-cols-4 gap-6">
-          {[
-            "⚡ Real-time Alerts",
-            "🤖 AI Auto Assignment",
-            "📊 Smart Dashboard",
-            "🚀 Faster Resolution",
-          ].map((f, i) => (
-            <motion.div
-              key={i}
-              whileHover={{ y: -10 }}
-              className="p-6 bg-white/5 border border-white/10 rounded-xl hover:border-purple-500 transition"
-            >
-              {f}
-            </motion.div>
-          ))}
+          {["⚡ Alerts", "🤖 AI Routing", "📊 Dashboard", "🚀 Speed"].map(
+            (f, i) => (
+              <Tilt glareEnable glareMaxOpacity={0.2} key={i}>
+                <motion.div
+                  whileHover={{ y: -10 }}
+                  className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-xl"
+                >
+                  {f}
+                </motion.div>
+              </Tilt>
+            ),
+          )}
         </div>
       </section>
 
-      {/* 📊 DASHBOARD PREVIEW */}
+      {/* 📊 LIVE DASHBOARD */}
       <section className="py-20 px-10 text-center">
-        <h2 className="text-3xl font-semibold mb-10">
-          Live Incident Dashboard
-        </h2>
+        <h2 className="text-3xl mb-10">Live Incident Dashboard</h2>
 
-        <motion.div
-          whileHover={{ scale: 1.02 }}
-          className="max-w-4xl mx-auto backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6"
-        >
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-red-500/20 p-4 rounded-lg">Server Down 🚨</div>
-            <div className="bg-yellow-500/20 p-4 rounded-lg">High CPU ⚠️</div>
-            <div className="bg-green-500/20 p-4 rounded-lg">Resolved ✅</div>
+        <Tilt tiltMaxAngleX={10} tiltMaxAngleY={10}>
+          <div className="max-w-4xl mx-auto bg-white/5 border border-white/10 p-6 rounded-2xl backdrop-blur-xl">
+            <motion.div
+              key={status}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="p-4 bg-purple-500/20 rounded-lg mb-4"
+            >
+              {alerts[status]}
+            </motion.div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-red-500/20 p-4 rounded">Server</div>
+              <div className="bg-yellow-500/20 p-4 rounded">CPU</div>
+              <div className="bg-green-500/20 p-4 rounded">Healthy</div>
+            </div>
           </div>
-        </motion.div>
-      </section>
-
-      {/* 🎯 HOW IT WORKS */}
-      <section className="py-20 px-10 text-center">
-        <h2 className="text-3xl font-semibold mb-12">How It Works</h2>
-
-        <div className="flex flex-col md:flex-row justify-center gap-8">
-          {["Detect", "Assign", "Resolve"].map((step, i) => (
-            <motion.div
-              key={i}
-              whileHover={{ scale: 1.1 }}
-              className="p-6 bg-white/5 border border-white/10 rounded-xl w-48"
-            >
-              {step}
-            </motion.div>
-          ))}
-        </div>
+        </Tilt>
       </section>
 
       {/* 💎 CTA */}
       <section className="py-24 text-center">
-        <h2 className="text-4xl font-bold mb-6">
-          Be Ready Before the Next Incident 🚀
-        </h2>
+        <h2 className="text-4xl mb-6">Ready Before the Next Incident 🚀</h2>
 
-        <button className="px-8 py-4 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl hover:scale-110 transition">
-          Start Free
-        </button>
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-xl hover:scale-110 transition"
+        >
+          Get Started Now
+        </motion.button>
       </section>
+
       <Footer />
     </div>
   );
