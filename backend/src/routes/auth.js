@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
+const blacklistModel = require('../models/Blacklist');
+const RedisClient = require('../config/redis');
 
 // Rate limiting for auth endpoints
 const loginLimiter = rateLimit({
@@ -167,15 +169,37 @@ router.put('/me', protect, async (req, res) => {
   }
 });
 
-// Change password
 router.post('/change-password', protect, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
-    const user = await User.findById(req.user.id);
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both current and new password'
+      });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+    
+    // Get user with password field
+    const user = await User.findById(req.user.id).select('+password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
     
     // Check current password
     const isMatch = await user.matchPassword(currentPassword);
+    
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -183,19 +207,24 @@ router.post('/change-password', protect, async (req, res) => {
       });
     }
     
-    // Update password
+    // Set new password - this will trigger the pre-save hook
     user.password = newPassword;
+    
+    // Save the user (this will trigger the pre-save middleware)
     await user.save();
+    
+    console.log('Password changed successfully for user:', user.email);
     
     res.json({
       success: true,
       message: 'Password updated successfully'
     });
   } catch (error) {
-    console.error('Change password error:', error);
+    console.error('Change password error details:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to change password'
+      message: 'Failed to change password',
+      error: error.message
     });
   }
 });
@@ -203,6 +232,13 @@ router.post('/change-password', protect, async (req, res) => {
 // Logout (client-side token removal, but we can blacklist tokens here)
 router.post('/logout', protect, async (req, res) => {
   // In a production app, you might want to blacklist the token
+    const token = req.cookies.token
+
+    await RedisClient.set(`blacklist:${token}`, 'true', 3600) // Blacklist for 1 hour
+    // await blacklistModel.create({ token: token });
+    res.clearCookie("token")
+
+
   // For now, just return success
   res.json({
     success: true,

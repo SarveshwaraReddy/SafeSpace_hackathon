@@ -1,12 +1,33 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const blacklistModel = require('../models/Blacklist');
+const RedisClient = require('../config/redis');
 
 const protect = async (req, res, next) => {
   let token;
   
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
-      token = req.headers.authorization.split(' ')[1];
+      token = req.cookies.token;
+
+      // Check if token is blacklisted
+      // const blacklisted = await blacklistModel.findOne({ token });
+      // if (blacklisted) {
+      //   return res.status(401).json({
+      //     success: false,
+      //     message: 'Token is blacklisted. Please login again.'
+      //   });
+      // }
+      const blacklisted = await RedisClient.get(`blacklist:${token}`);
+
+      // console.log('Checking token against blacklist:', token, blacklisted);
+      if (blacklisted) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token is blacklisted. Please login again.'
+        });
+      }
+
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
       req.user = await User.findById(decoded.id).select('-password');
@@ -26,7 +47,7 @@ const protect = async (req, res, next) => {
         message: 'Not authorized, token failed'
       });
     }
-  }
+  // }
   
   if (!token) {
     return res.status(401).json({

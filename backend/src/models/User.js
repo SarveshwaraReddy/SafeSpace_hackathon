@@ -38,8 +38,12 @@ const userSchema = new mongoose.Schema({
 });
 
 // Update timestamp on save
-userSchema.pre('save', function() {
+userSchema.pre('save', async function() {
   this.updatedAt = Date.now();
+   if (!this.isModified("password")) return;
+
+    const hash = await bcrypt.hash(this.password, 10);
+    this.password = hash;
 });
 
 // Match password method - FIXED: removed next parameter
