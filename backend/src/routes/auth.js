@@ -47,7 +47,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
-    
+    res.cookie('token', token);
     res.status(201).json({
       success: true,
       data: {
@@ -102,6 +102,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
+
+    res.cookie('token', token);
     
     res.json({
       success: true,

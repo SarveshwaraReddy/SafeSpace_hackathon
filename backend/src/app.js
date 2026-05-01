@@ -7,6 +7,7 @@ const path = require('path');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
+const cookieParser = require("cookie-parser")
 
 // Import routes
 const incidentRoutes = require('./routes/incidents');
@@ -18,7 +19,7 @@ const aiRoutes = require('./routes/ai');
 const authRoutes = require('./routes/auth');
 
 const app = express();
-
+app.use(cookieParser())
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -86,7 +87,7 @@ app.use('/status-page', express.static(path.join(__dirname, '../../public/status
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    name: 'Smart Incident Response Platform API',
+    name: 'SafeSpace - Smart Incident Response Platform API',
     version: '1.0.0',
     status: 'operational',
     documentation: '/api/docs',
@@ -105,9 +106,9 @@ app.get('/api/docs', (req, res) => {
   res.json({
     openapi: '3.0.0',
     info: {
-      title: 'Incident Response Platform API',
+      title: 'SafeSpace - Incident Response Platform API',
       version: '1.0.0',
-      description: 'API documentation for Smart Incident Response Platform'
+      description: 'API documentation for SafeSpace - Smart Incident Response Platform'
     },
     servers: [
       {
