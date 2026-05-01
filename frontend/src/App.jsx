@@ -7,7 +7,7 @@ import {
 } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Preloader from "./pages/PreDownload/Download";
-import Landing from "./pages/Landing";
+import Landing from "./pages/Landing/Landing"
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Dashboard from "./pages/dashboard/Dashboard";

@@ -1,7 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
- 
+
 @layer base {
   :root {
     --background: 15 23 42; /* slate-900 */
@@ -41,13 +41,111 @@
 }
 
 /* 🔥 Glassmorphism utility */
-@layer components {
-  .glass {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg;
-  }
 
-  .glass-card {
-    @apply glass rounded-2xl p-6;
+.safespace-text {
+  background: linear-gradient(
+    90deg,
+    #06b6d4,
+    /* cyan */ #3b82f6,
+    /* blue */ #22c55e /* subtle green */
+  );
+  -webkit-background-clip: text;
+  color: transparent;
+  background-size: 200%;
+  animation: safespaceFlow 4s linear infinite;
+}
+
+@keyframes safespaceFlow {
+  0% {
+    background-position: 0%;
+  }
+  100% {
+    background-position: 200%;
+  }
+}
+
+/* GLOW PULSE */
+@keyframes matrixGlow {
+  0% {
+    text-shadow:
+      0 0 5px #00ff9f,
+      0 0 10px #00ff9f;
+  }
+  100% {
+    text-shadow:
+      0 0 20px #00ff9f,
+      0 0 40px #00ff9f;
+  }
+}
+
+/* GLITCH EFFECT */
+.glitch-text {
+  position: relative;
+  color: white;
+  animation: glitch 1s infinite;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+  content: "Start Smart Response";
+  position: absolute;
+  left: 0;
+}
+
+.glitch-text::before {
+  color: #00ffea;
+  z-index: -1;
+  animation: glitchTop 1s infinite;
+}
+
+.glitch-text::after {
+  color: #ff00c8;
+  z-index: -2;
+  animation: glitchBottom 1s infinite;
+}
+
+@keyframes glitch {
+  0% {
+    transform: none;
+  }
+  20% {
+    transform: skew(-2deg);
+  }
+  40% {
+    transform: skew(2deg);
+  }
+  60% {
+    transform: none;
+  }
+  80% {
+    transform: skew(1deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes glitchTop {
+  0% {
+    transform: translate(0);
+  }
+  50% {
+    transform: translate(-2px, -2px);
+  }
+  100% {
+    transform: translate(2px, 2px);
+  }
+}
+
+@keyframes glitchBottom {
+  0% {
+    transform: translate(0);
+  }
+  50% {
+    transform: translate(2px, 2px);
+  }
+  100% {
+    transform: translate(-2px, -2px);
   }
 }
 
@@ -79,4 +177,21 @@ html {
 ::selection {
   background: rgba(99, 102, 241, 0.4);
   color: white;
+}
+
+.gradient-text {
+  background: linear-gradient(to right, #a855f7, #ec4899, #3b82f6);
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: gradient 4s linear infinite;
+  background-size: 200%;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0%;
+  }
+  100% {
+    background-position: 200%;
+  }
 }
