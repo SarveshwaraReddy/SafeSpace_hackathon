@@ -1,7 +1,6 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { ShieldAlert, Activity, Users, Zap, CheckCircle2 } from "lucide-react";
 import Footer from "../../components/Footer";
 import ScrambleTextPro from "./Matrix";
 import Tilt from "react-parallax-tilt";
@@ -11,6 +10,7 @@ import { loadFull } from "tsparticles";
 export default function LandingPage() {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [status, setStatus] = useState(0);
+  const navigate = useNavigate();
 
   // Cursor glow
   useEffect(() => {
@@ -33,9 +33,17 @@ export default function LandingPage() {
     await loadFull(main);
   };
 
+  // ✅ FEATURES ARRAY
+  const features = [
+    { name: "⚡ Alerts" },
+    { name: "🤖 AI Routing" },
+    { name: "📊 Dashboard", path: "/dashboard" }, // 👈 redirect
+    { name: "🚀 Speed" },
+  ];
+
   return (
     <div className="bg-[#050507] text-white relative overflow-hidden">
-      {/* 🌌 PARTICLES BACKGROUND */}
+      {/* 🌌 PARTICLES */}
       <Particles
         init={particlesInit}
         options={{
@@ -62,67 +70,54 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
-          className="text-5xl md:text-7xl font-bold leading-tight text-center"
+          className="text-5xl md:text-7xl font-bold"
         >
-          <span className="text-white font-[cyr]">Stop Chaos.</span>
+          <span className="text-white">Stop Chaos.</span>
           <br />
-
           <ScrambleTextPro />
         </motion.h1>
 
-        <p className="text-gray-400 mt-6 max-w-xl font-[aeo-bold]">
+        <p className="text-gray-400 mt-6 max-w-xl">
           AI-powered incident response platform that reacts before damage
           happens.
         </p>
 
-        {/* 🧲 Magnetic Buttons */}
+        {/* 🔘 BUTTONS */}
         <div className="flex gap-4 mt-8">
           <motion.button
+            onClick={() => navigate("/dashboard")}
             whileHover={{ scale: 1.1 }}
-            className="px-6 py-3 bg-gradient-to-r font-bold font-[cyr]   from-cyan-500 to-blue-500 rounded-xl shadow-lg hover:scale-110 transition text-lg"
+            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-lg"
           >
             Start Free Trial
           </motion.button>
 
           <motion.button
             whileHover={{ scale: 1.05 }}
-            className="px-6 py-3 border font-bold font-[cyr] text-lg border-cyan-500/40 text-cyan-400 rounded-xl hover:bg-cyan-500/10 transition"
+            className="px-6 py-3 border border-cyan-500/40 text-cyan-400 rounded-xl"
           >
             Live Demo
           </motion.button>
         </div>
-
-        {/* 📊 TRUST */}
-        <div className="flex gap-10 mt-12 text-gray-400 text-sm">
-          <div className="text-lg">
-            <b className="text-white">99.99%</b> uptime
-          </div>
-          <div className="text-lg">
-            <b className="text-white">&lt;3s</b> response
-          </div>
-          <div className="text-lg">
-            <b className="text-white">500+</b> teams
-          </div>
-        </div>
       </section>
 
-      {/* ⚡ FEATURES WITH 3D TILT */}
+      {/* ⚡ FEATURES */}
       <section className="py-20 px-10 text-center">
         <h2 className="text-3xl mb-12">Powerful Features</h2>
 
         <div className="grid md:grid-cols-4 gap-6">
-          {["⚡ Alerts", "🤖 AI Routing", "📊 Dashboard", "🚀 Speed"].map(
-            (f, i) => (
-              <Tilt glareEnable glareMaxOpacity={0.2} key={i}>
-                <motion.div
-                  whileHover={{ y: -10 }}
-                  className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-xl"
-                >
-                  {f}
-                </motion.div>
-              </Tilt>
-            ),
-          )}
+          {features.map((f, i) => (
+            <Tilt glareEnable glareMaxOpacity={0.2} key={i}>
+              <motion.div
+                whileHover={{ y: -10, scale: f.path ? 1.05 : 1 }}
+                onClick={() => f.path && navigate(f.path)}
+                className={`p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-xl 
+                ${f.path ? "cursor-pointer hover:border-cyan-400" : ""}`}
+              >
+                {f.name}
+              </motion.div>
+            </Tilt>
+          ))}
         </div>
       </section>
 
@@ -155,8 +150,9 @@ export default function LandingPage() {
         <h2 className="text-4xl mb-6">Ready Before the Next Incident 🚀</h2>
 
         <motion.button
+          onClick={() => navigate("/dashboard")}
           whileHover={{ scale: 1.1 }}
-          className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-xl hover:scale-110 transition"
+          className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-xl"
         >
           Get Started Now
         </motion.button>
