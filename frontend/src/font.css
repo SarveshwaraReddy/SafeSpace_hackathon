@@ -1,0 +1,53 @@
+@font-face {
+  font-family: CYR;
+  src: url("./fonts/BC_Novatica_CYR_Regular.otf");
+}
+@font-face {
+  font-family: PG;
+  src: url("./fonts/Breakdown\ PG.otf");
+}
+@font-face {
+  font-family: onetwo;
+  src: url("./fonts/CfOneTwoTreesRegular-4LGp.ttf");
+}
+@font-face {
+  font-family: wght;
+  src: url("./fonts/DancingScript-VariableFont_wght.ttf");
+}
+@font-face {
+  font-family: aeo-bold;
+  src: url("./fonts/fonnts.com-Aeonik-Bold.ttf");
+}
+@font-face {
+  font-family: aeo-reg;
+  src: url("./fonts/fonnts.com-Aeonik-Regular.ttf");
+}
+@font-face {
+  font-family: franklin;
+  src: url("./fonts/LibreFranklin-VariableFont_wght.ttf");
+}
+@font-face {
+  font-family: rocker;
+  src: url("./fonts/NewRocker-Regular.ttf");
+}
+@font-face {
+  font-family: roadrage;
+  src: url("./fonts/RoadRage-Regular.ttf");
+}
+@font-face {
+  font-family: Rp;
+  src: url("./fonts/SuperchargeStraightCondensed-RpVWV.otf");
+}
+@font-face {
+  font-family: under;
+  src: url("./fonts/UnderThreatDemo-vnVD4.ttf");
+}
+
+@font-face {
+  font-family: wal;
+  src: url("./fonts/waltograph42.otf");
+}
+@font-face {
+  font-family: wooden;
+  src: url("./fonts/Wooden\ Log.ttf");
+}

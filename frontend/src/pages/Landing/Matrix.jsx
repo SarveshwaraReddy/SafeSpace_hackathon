@@ -54,7 +54,7 @@ import { useState,useEffect } from "react";
   }, [wordIndex]);
 
   return (
-    <span className="safespace-text font-bold tracking-wide">
+    <span className="safespace-text font-bold tracking-wide font-[reg]">
   {display}
   <span className="animate-pulse">|</span>
 </span>
