@@ -1,5 +1,33 @@
 const mongoose = require('mongoose');
 
+const actionItemSchema = new mongoose.Schema({
+  task: {
+    type: String,
+    required: true
+  },
+  assignedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false, // Make optional
+    validate: {
+      validator: function(v) {
+        // Allow null, undefined, or valid ObjectId
+        return v === null || v === undefined || mongoose.Types.ObjectId.isValid(v);
+      },
+      message: 'Invalid user ID format'
+    }
+  },
+  dueDate: {
+    type: Date
+  },
+  completed: {
+    type: Boolean,
+    default: false
+  },
+  completedAt: Date,
+  notes: String
+});
+
 const postmortemSchema = new mongoose.Schema({
   incidentId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -14,18 +42,7 @@ const postmortemSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  actionItems: [{
-    task: String,
-    assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    dueDate: Date,
-    completed: {
-      type: Boolean,
-      default: false
-    }
-  }],
+  actionItems: [actionItemSchema],
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -39,7 +56,14 @@ const postmortemSchema = new mongoose.Schema({
   metrics: {
     timeToDetect: Number,
     timeToResolve: Number,
-    customerImpact: String
+    customerImpact: String,
+    severity: String
+  },
+  tags: [String],
+  status: {
+    type: String,
+    enum: ['Draft', 'Review', 'Published', 'Archived'],
+    default: 'Draft'
   },
   createdAt: {
     type: Date,
@@ -51,9 +75,10 @@ const postmortemSchema = new mongoose.Schema({
   }
 });
 
-postmortemSchema.pre('save', function(next) {
+// Update timestamp on save
+postmortemSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
+  // next();
 });
 
 module.exports = mongoose.model('Postmortem', postmortemSchema);

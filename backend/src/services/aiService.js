@@ -1,10 +1,55 @@
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class AIService {
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    this.genAI = null;
+    this.model = null;
+    this.isInitialized = false;
+    this.init();
+  }
+
+  init() {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn('⚠️ GEMINI_API_KEY not found in environment variables');
+      return;
+    }
+    
+    try {
+      this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      // Use gemini-pro model for text generation
+      this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+      this.isInitialized = true;
+      console.log('✅ Gemini AI service initialized');
+    } catch (error) {
+      console.error('Failed to initialize Gemini AI:', error);
+    }
+  }
+
+  async generateContent(prompt, options = {}) {
+    if (!this.isInitialized) {
+      console.warn('Gemini AI not initialized');
+      return null;
+    }
+
+    try {
+      const generationConfig = {
+        temperature: options.temperature || 0.7,
+        maxOutputTokens: options.maxTokens || 1000,
+        topP: options.topP || 0.9,
+        topK: options.topK || 40,
+      };
+
+      const result = await this.model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig,
+      });
+
+      const response = result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      return null;
+    }
   }
 
   async generateIncidentSummary(incident) {
@@ -15,42 +60,48 @@ class AIService {
         2. Possible root causes (list top 3)
         3. Recommended immediate actions
         
-        Incident: ${incident.title}
-        Description: ${incident.description}
-        Severity: ${incident.severity}
-        Affected Services: ${incident.affectedServices.join(', ')}
+        Incident Details:
+        - Title: ${incident.title}
+        - Description: ${incident.description}
+        - Severity: ${incident.severity}
+        - Affected Services: ${incident.affectedServices.join(', ')}
+        
+        Format your response as JSON with keys: summary, rootCauses, actions
       `;
       
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert SRE incident analyst. Provide concise, actionable insights."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
+      const response = await this.generateContent(prompt, {
         temperature: 0.7,
-        max_tokens: 500
+        maxTokens: 500
       });
       
-      const response = completion.choices[0].message.content;
+      if (!response) return null;
       
-      // Parse AI response
-      const summary = response.split('\n')[0];
-      const rootCauses = response.match(/root causes?:?\s*(.*?)(?=\d\.|$)/is);
+      // Parse JSON response or extract text
+      let result;
+      try {
+        // Try to parse as JSON
+        result = JSON.parse(response);
+      } catch {
+        // If not JSON, extract sections
+        const lines = response.split('\n');
+        result = {
+          summary: lines.find(l => l.includes('summary') || l.includes('Summary')) || response.substring(0, 200),
+          rootCauses: lines.filter(l => l.includes('root') || l.includes('cause')),
+          actions: lines.filter(l => l.includes('action') || l.includes('recommend'))
+        };
+      }
       
       // Update incident with AI insights
-      incident.aiSummary = summary;
-      incident.aiRootCause = rootCauses ? rootCauses[1] : 'Analysis in progress';
+      incident.aiSummary = result.summary || response.substring(0, 300);
+      incident.aiRootCause = Array.isArray(result.rootCauses) ? result.rootCauses.join('\n') : result.rootCauses;
       await incident.save();
       
-      return { summary, rootCauses: incident.aiRootCause };
+      return { 
+        summary: incident.aiSummary, 
+        rootCauses: incident.aiRootCause 
+      };
     } catch (error) {
-      console.error('AI summary generation error:', error);
+      console.error('Gemini summary generation error:', error);
       return null;
     }
   }
@@ -65,28 +116,21 @@ class AIService {
         4. Recommendations for future improvements
         
         Incident: ${incident.title}
-        Timeline events: ${timeline.map(t => `${t.eventType}: ${t.description} at ${t.timestamp}`).join('\n')}
+        Severity: ${incident.severity}
+        Timeline events:
+        ${timeline.map(t => `- ${t.eventType}: ${t.description} at ${t.timestamp}`).join('\n')}
+        
+        Provide a structured analysis.
       `;
       
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are an incident postmortem analyst. Provide data-driven insights."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
+      const response = await this.generateContent(prompt, {
         temperature: 0.5,
-        max_tokens: 800
+        maxTokens: 800
       });
       
-      return completion.choices[0].message.content;
+      return response;
     } catch (error) {
-      console.error('AI timeline analysis error:', error);
+      console.error('Gemini timeline analysis error:', error);
       return null;
     }
   }
@@ -94,45 +138,215 @@ class AIService {
   async generatePostmortem(incident, timeline, resolution) {
     try {
       const prompt = `
-        Generate a comprehensive postmortem report for this incident including:
+        Generate a comprehensive postmortem report for this incident.
         
+        Incident Details:
+        Title: ${incident.title}
+        Description: ${incident.description}
+        Severity: ${incident.severity}
+        Duration: ${incident.createdAt} to ${incident.resolvedAt || 'Ongoing'}
+        Affected Services: ${incident.affectedServices.join(', ')}
+        
+        Timeline:
+        ${timeline.map(t => `- ${t.timestamp}: ${t.description}`).join('\n')}
+        
+        Resolution: ${resolution}
+        
+        Please include:
         1. Executive Summary
         2. Timeline of Events
         3. Root Cause Analysis
         4. Impact Assessment
         5. Action Items
         
-        Incident Details:
+        Format the response in markdown.
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.5,
+        maxTokens: 1500
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini postmortem generation error:', error);
+      return null;
+    }
+  }
+
+  async getRootCauseAnalysis(incident, timeline) {
+    try {
+      const prompt = `
+        Analyze this incident and identify:
+        1. Most likely root cause
+        2. Contributing factors
+        3. Patterns or anomalies detected
+        4. Similar past incidents (if any)
+        
+        Incident: ${incident.title}
+        Description: ${incident.description}
+        Timeline events: ${timeline.length} events recorded
+        
+        Provide a detailed root cause analysis.
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.3,
+        maxTokens: 1000
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini root cause analysis error:', error);
+      return null;
+    }
+  }
+
+  async predictIncidents(historicalData) {
+    try {
+      const prompt = `
+        Based on this historical incident data, predict future incidents:
+        
+        Historical Data:
+        Total Incidents: ${historicalData.total}
+        By Severity: ${JSON.stringify(historicalData.bySeverity)}
+        By Service: ${JSON.stringify(historicalData.byService)}
+        Time Range: Last ${historicalData.days} days
+        
+        Provide:
+        1. Most at-risk services
+        2. Expected incident count in next 7 days
+        3. Preventive recommendations
+        
+        Format as JSON.
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.6,
+        maxTokens: 800
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini prediction error:', error);
+      return null;
+    }
+  }
+
+  async chatWithAI(incident, question, conversationHistory = []) {
+    try {
+      const prompt = `
+        You are an AI assistant helping with a production incident.
+        
+        Incident Context:
         Title: ${incident.title}
         Description: ${incident.description}
         Severity: ${incident.severity}
-        Duration: ${incident.createdAt} to ${incident.resolvedAt}
-        Affected Services: ${incident.affectedServices.join(', ')}
+        Status: ${incident.status}
+        Current Updates: ${incident.updates.length} updates recorded
         
-        Timeline: ${timeline.map(t => `- ${t.timestamp}: ${t.description}`).join('\n')}
+        Previous conversation:
+        ${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}
         
-        Resolution: ${resolution}
+        User Question: ${question}
+        
+        Provide a helpful, accurate response based on the incident context.
       `;
       
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: "You are a technical writer generating detailed incident postmortems. Use a professional tone."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.5,
-        max_tokens: 1500
+      const response = await this.generateContent(prompt, {
+        temperature: 0.7,
+        maxTokens: 1000
       });
       
-      return completion.choices[0].message.content;
+      return response;
     } catch (error) {
-      console.error('AI postmortem generation error:', error);
+      console.error('Gemini chat error:', error);
+      return "I'm having trouble analyzing the incident right now. Please try again later.";
+    }
+  }
+
+  async analyzeAnomaly(currentRate, baselineRate, timeRange) {
+    try {
+      const prompt = `
+        Analyze this anomaly in incident rate:
+        
+        Current Rate: ${currentRate} incidents per ${timeRange}
+        Baseline Rate: ${baselineRate} incidents per day
+        
+        Provide:
+        1. Severity assessment (Low/Medium/High/Critical)
+        2. Possible causes
+        3. Recommended investigation steps
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.4,
+        maxTokens: 500
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini anomaly analysis error:', error);
+      return null;
+    }
+  }
+
+  async generateRecommendations(incident) {
+    try {
+      const prompt = `
+        Generate incident response recommendations for:
+        
+        Incident: ${incident.title}
+        Severity: ${incident.severity}
+        Status: ${incident.status}
+        Affected Services: ${incident.affectedServices.join(', ')}
+        
+        Provide:
+        1. Immediate actions (next 30 minutes)
+        2. Short-term fixes (next 2 hours)
+        3. Long-term preventive measures
+        
+        Be specific and actionable.
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.6,
+        maxTokens: 800
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini recommendations error:', error);
+      return null;
+    }
+  }
+
+  async generateHealthScore(incident, metrics) {
+    try {
+      const prompt = `
+        Calculate a health score for this incident response:
+        
+        Metrics:
+        - Time to detect: ${metrics.timeToDetect} minutes
+        - Update frequency: ${metrics.updateFrequency} updates/hour
+        - Responder count: ${metrics.responderCount}
+        - Has timeline: ${metrics.hasTimeline}
+        - Has AI analysis: ${metrics.hasAI}
+        
+        Provide:
+        1. Health score (0-100)
+        2. Risk level
+        3. Improvement suggestions
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.3,
+        maxTokens: 400
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini health score error:', error);
       return null;
     }
   }

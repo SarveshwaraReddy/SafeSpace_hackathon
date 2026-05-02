@@ -1,11 +1,9 @@
 const aiService = require('../services/aiService');
 const Incident = require('../models/Incident');
 const TimelineEvent = require('../models/TimelineEvent');
-const Postmortem = require('../models/Postmortem');
 const cacheService = require('../services/cacheService');
 
 class AIController {
-  // Generate AI summary for an incident
   async generateIncidentSummary(req, res) {
     try {
       const { id } = req.params;
@@ -18,28 +16,20 @@ class AIController {
         });
       }
       
-      // Check cache first
       const cacheKey = `ai:summary:${id}`;
       let aiSummary = await cacheService.get(cacheKey);
       
       if (!aiSummary) {
-        // Generate new AI summary
         const result = await aiService.generateIncidentSummary(incident);
         
         aiSummary = {
-          summary: result.summary,
-          rootCauses: result.rootCauses,
+          summary: result?.summary || incident.aiSummary,
+          rootCauses: result?.rootCauses || incident.aiRootCause,
           generatedAt: new Date(),
-          confidence: 0.85
+          model: 'gemini-pro'
         };
         
-        // Cache for 1 hour
         await cacheService.set(cacheKey, aiSummary, 3600);
-        
-        // Update incident with AI insights
-        incident.aiSummary = result.summary;
-        incident.aiRootCause = result.rootCauses;
-        await incident.save();
       }
       
       res.json({
@@ -55,7 +45,6 @@ class AIController {
     }
   }
 
-  // Get AI-powered root cause analysis
   async getRootCauseAnalysis(req, res) {
     try {
       const { id } = req.params;
@@ -75,43 +64,14 @@ class AIController {
       let analysis = await cacheService.get(cacheKey);
       
       if (!analysis) {
-        // Analyze timeline for root cause
-        const prompt = `
-          Analyze this incident timeline and identify:
-          1. Most likely root cause
-          2. Contributing factors
-          3. Patterns or anomalies
-          4. Similar past incidents
-          
-          Incident: ${incident.title}
-          Severity: ${incident.severity}
-          Timeline events: ${timeline.map(t => `${t.timestamp}: ${t.description}`).join('\n')}
-        `;
-        
-        const openai = require('openai');
-        const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-        
-        const completion = await client.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert SRE root cause analyst. Provide structured analysis."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 1000
-        });
+        const result = await aiService.getRootCauseAnalysis(incident, timeline);
         
         analysis = {
-          rootCause: completion.choices[0].message.content,
+          analysis: result,
           confidence: 0.75,
           analyzedAt: new Date(),
-          eventsAnalyzed: timeline.length
+          eventsAnalyzed: timeline.length,
+          model: 'gemini-pro'
         };
         
         await cacheService.set(cacheKey, analysis, 3600);
@@ -130,7 +90,122 @@ class AIController {
     }
   }
 
-  // Generate incident prediction based on historical data
+  // Find similar incidents based on current incident
+async findSimilarIncidents(req, res) {
+  try {
+    const { id } = req.params;
+    
+    const currentIncident = await Incident.findById(id);
+    if (!currentIncident) {
+      return res.status(404).json({
+        success: false,
+        message: 'Incident not found'
+      });
+    }
+    
+    // Find similar incidents based on title, description, affected services
+    const similarIncidents = await Incident.find({
+      _id: { $ne: id }, // Exclude current incident
+      $or: [
+        { affectedServices: { $in: currentIncident.affectedServices } },
+        { severity: currentIncident.severity },
+        { title: { $regex: currentIncident.title.split(' ').slice(0, 3).join('|'), $options: 'i' } }
+      ]
+    })
+    .select('title severity status resolvedAt createdAt description updates')
+    .limit(5)
+    .sort({ createdAt: -1 });
+    
+    const cacheKey = `ai:similar:${id}`;
+    let analysis = await cacheService.get(cacheKey);
+    
+    if (!analysis && similarIncidents.length > 0) {
+      // Use Gemini to analyze similarities
+      const prompt = `
+        Compare the current incident with similar past incidents and provide insights.
+        
+        Current Incident:
+        Title: ${currentIncident.title}
+        Description: ${currentIncident.description}
+        Severity: ${currentIncident.severity}
+        Affected Services: ${currentIncident.affectedServices.join(', ')}
+        
+        Similar Past Incidents:
+        ${similarIncidents.map((incident, index) => `
+          Incident ${index + 1}:
+          - Title: ${incident.title}
+          - Severity: ${incident.severity}
+          - Status: ${incident.status}
+          - Resolution Time: ${incident.resolvedAt ? ((incident.resolvedAt - incident.createdAt) / 1000 / 60).toFixed(0) : 'N/A'} minutes
+          - Key Updates: ${incident.updates.slice(0, 2).map(u => u.message).join('; ')}
+        `).join('\n')}
+        
+        Please provide:
+        1. Common patterns between these incidents
+        2. Successful resolution strategies from past incidents
+        3. Estimated resolution time based on similar incidents
+        4. Recommended actions for the current incident
+        
+        Format as JSON with keys: patterns, strategies, estimatedTime, recommendations
+      `;
+      
+      const aiResponse = await aiService.generateContent(prompt, {
+        temperature: 0.3,
+        maxTokens: 1000
+      });
+      
+      // Parse AI response
+      let parsedResponse;
+      try {
+        parsedResponse = JSON.parse(aiResponse);
+      } catch {
+        // If not JSON, extract text
+        parsedResponse = {
+          patterns: aiResponse.substring(0, 300),
+          strategies: "Based on past incidents",
+          estimatedTime: "Unknown",
+          recommendations: aiResponse
+        };
+      }
+      
+      analysis = {
+        insights: parsedResponse,
+        similarIncidents: similarIncidents.map(incident => ({
+          id: incident._id,
+          title: incident.title,
+          severity: incident.severity,
+          status: incident.status,
+          resolvedAt: incident.resolvedAt,
+          resolutionTime: incident.resolvedAt ? 
+            ((incident.resolvedAt - incident.createdAt) / 1000 / 60).toFixed(0) : null,
+          description: incident.description.substring(0, 200)
+        })),
+        count: similarIncidents.length,
+        generatedAt: new Date(),
+        model: 'gemini-pro'
+      };
+      
+      // Cache for 30 minutes
+      await cacheService.set(cacheKey, analysis, 1800);
+    }
+    
+    res.json({
+      success: true,
+      data: analysis || { 
+        similarIncidents, 
+        count: similarIncidents.length,
+        message: similarIncidents.length === 0 ? 'No similar incidents found' : 'AI analysis not available'
+      }
+    });
+  } catch (error) {
+    console.error('Find similar incidents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to find similar incidents'
+    });
+  }
+}
+
   async predictNextIncident(req, res) {
     try {
       const { days = 7 } = req.query;
@@ -139,74 +214,41 @@ class AIController {
       let predictions = await cacheService.get(cacheKey);
       
       if (!predictions) {
-        // Get historical incidents
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - 30);
         
         const historicalIncidents = await Incident.find({
           createdAt: { $gte: startDate }
-        }).select('severity affectedServices createdAt');
+        });
         
-        // Analyze patterns
-        const serviceFrequency = {};
-        const severityPatterns = {};
-        const timePatterns = {};
+        const bySeverity = {};
+        const byService = {};
         
         historicalIncidents.forEach(incident => {
-          // Service frequency
+          bySeverity[incident.severity] = (bySeverity[incident.severity] || 0) + 1;
           incident.affectedServices.forEach(service => {
-            serviceFrequency[service] = (serviceFrequency[service] || 0) + 1;
+            byService[service] = (byService[service] || 0) + 1;
           });
-          
-          // Severity patterns
-          const hour = incident.createdAt.getHours();
-          severityPatterns[incident.severity] = (severityPatterns[incident.severity] || 0) + 1;
-          timePatterns[hour] = (timePatterns[hour] || 0) + 1;
         });
         
-        // Use AI to predict
-        const openai = require('openai');
-        const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-        
-        const completion = await client.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: "You are an AI predicting future incidents based on patterns."
-            },
-            {
-              role: "user",
-              content: `
-                Based on these patterns, predict likely incidents in next ${days} days:
-                Service frequency: ${JSON.stringify(serviceFrequency)}
-                Severity distribution: ${JSON.stringify(severityPatterns)}
-                Time patterns: ${JSON.stringify(timePatterns)}
-                
-                Provide:
-                1. Most at-risk services
-                2. Expected incident count
-                3. Recommended preventive actions
-              `
-            }
-          ],
-          temperature: 0.5,
-          max_tokens: 800
-        });
-        
-        predictions = {
-          predictions: completion.choices[0].message.content,
-          data: {
-            serviceFrequency,
-            severityPatterns,
-            timePatterns,
-            totalIncidents: historicalIncidents.length
-          },
-          generatedAt: new Date(),
-          validFor: `${days} days`
+        const historicalData = {
+          total: historicalIncidents.length,
+          bySeverity,
+          byService,
+          days: 30
         };
         
-        await cacheService.set(cacheKey, predictions, 86400); // Cache for 24 hours
+        const result = await aiService.predictIncidents(historicalData);
+        
+        predictions = {
+          predictions: result,
+          data: historicalData,
+          generatedAt: new Date(),
+          validFor: `${days} days`,
+          model: 'gemini-pro'
+        };
+        
+        await cacheService.set(cacheKey, predictions, 86400);
       }
       
       res.json({
@@ -222,86 +264,55 @@ class AIController {
     }
   }
 
-  // Analyze incident similarity for learning
-  async findSimilarIncidents(req, res) {
+  async chatWithAI(req, res) {
     try {
       const { id } = req.params;
+      const { question, conversationHistory = [] } = req.body;
       
-      const currentIncident = await Incident.findById(id);
-      if (!currentIncident) {
+      if (!question) {
+        return res.status(400).json({
+          success: false,
+          message: 'Question is required'
+        });
+      }
+      
+      const incident = await Incident.findById(id);
+      if (!incident) {
         return res.status(404).json({
           success: false,
           message: 'Incident not found'
         });
       }
       
-      // Find similar incidents based on title, description, affected services
-      const similarIncidents = await Incident.find({
-        _id: { $ne: id },
-        $or: [
-          { affectedServices: { $in: currentIncident.affectedServices } },
-          { severity: currentIncident.severity },
-          { title: { $regex: currentIncident.title.split(' ').slice(0, 3).join('|'), $options: 'i' } }
-        ]
-      })
-      .limit(5)
-      .select('title severity status resolvedAt createdAt');
+      const answer = await aiService.chatWithAI(incident, question, conversationHistory);
       
-      const cacheKey = `ai:similar:${id}`;
-      let analysis = await cacheService.get(cacheKey);
-      
-      if (!analysis && similarIncidents.length > 0) {
-        const openai = require('openai');
-        const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-        
-        const completion = await client.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: "You are an incident analysis AI. Compare and provide insights."
-            },
-            {
-              role: "user",
-              content: `
-                Current incident: ${currentIncident.title} - ${currentIncident.description}
-                Similar past incidents: ${similarIncidents.map(i => i.title).join(', ')}
-                
-                Provide:
-                1. Common patterns
-                2. Successful resolution strategies from past incidents
-                3. Estimated resolution time based on similar incidents
-              `
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 600
-        });
-        
-        analysis = {
-          insights: completion.choices[0].message.content,
-          similarIncidents: similarIncidents,
-          count: similarIncidents.length,
-          generatedAt: new Date()
-        };
-        
-        await cacheService.set(cacheKey, analysis, 1800); // Cache for 30 minutes
-      }
+      const conversationKey = `ai:chat:${id}:${req.user.id}`;
+      const updatedHistory = [
+        ...conversationHistory,
+        { role: "user", content: question, timestamp: new Date() },
+        { role: "assistant", content: answer, timestamp: new Date() }
+      ];
+      await cacheService.set(conversationKey, updatedHistory, 1800);
       
       res.json({
         success: true,
-        data: analysis || { similarIncidents, message: 'No AI analysis available' }
+        data: {
+          question,
+          answer,
+          conversationId: conversationKey,
+          timestamp: new Date(),
+          model: 'gemini-pro'
+        }
       });
     } catch (error) {
-      console.error('Find similar incidents error:', error);
+      console.error('Chat with AI error:', error);
       res.status(500).json({
         success: false,
-        message: 'Failed to find similar incidents'
+        message: 'Failed to get AI response'
       });
     }
   }
 
-  // Generate automated postmortem using AI
   async generatePostmortemAI(req, res) {
     try {
       const { id } = req.params;
@@ -325,7 +336,6 @@ class AIController {
       let postmortem = await cacheService.get(cacheKey);
       
       if (!postmortem) {
-        // Calculate metrics
         const timeToDetect = timeline.length > 0 
           ? (timeline[0].timestamp - incident.createdAt) / 1000 / 60 
           : null;
@@ -338,7 +348,7 @@ class AIController {
         
         postmortem = {
           title: `Postmortem: ${incident.title}`,
-          executiveSummary: response.split('\n\n')[0],
+          executiveSummary: response?.split('\n\n')[0] || response,
           timeline: timeline.map(t => ({
             time: t.timestamp,
             event: t.description,
@@ -350,19 +360,13 @@ class AIController {
             responderCount: incident.responders.length,
             updateCount: incident.updates.length
           },
-          rootCause: incident.aiRootCause || 'Analysis pending',
-          recommendations: [
-            'Implement better monitoring for affected services',
-            'Create runbook for similar incidents',
-            'Improve alerting thresholds',
-            'Conduct team training on incident response'
-          ],
           fullReport: response,
           generatedAt: new Date(),
-          aiGenerated: true
+          aiGenerated: true,
+          model: 'gemini-pro'
         };
         
-        await cacheService.set(cacheKey, postmortem, 7200); // Cache for 2 hours
+        await cacheService.set(cacheKey, postmortem, 7200);
       }
       
       res.json({
@@ -378,86 +382,10 @@ class AIController {
     }
   }
 
-  // Get AI-powered insights dashboard
-  async getAIDashboard(req, res) {
-    try {
-      const cacheKey = 'ai:dashboard';
-      let dashboard = await cacheService.get(cacheKey);
-      
-      if (!dashboard) {
-        // Get recent incidents
-        const recentIncidents = await Incident.find({
-          createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-        }).limit(10);
-        
-        // Get common issues
-        const commonServices = await Incident.aggregate([
-          { $unwind: '$affectedServices' },
-          { $group: { _id: '$affectedServices', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 5 }
-        ]);
-        
-        // Generate AI insights
-        const openai = require('openai');
-        const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-        
-        const completion = await client.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: "You are an AI providing operational insights."
-            },
-            {
-              role: "user",
-              content: `
-                Based on recent data:
-                - Recent incidents: ${recentIncidents.length}
-                - Most affected services: ${commonServices.map(s => s._id).join(', ')}
-                
-                Provide 3 key insights and recommendations for improving system reliability.
-              `
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 500
-        });
-        
-        dashboard = {
-          insights: completion.choices[0].message.content,
-          commonIssues: commonServices,
-          recentActivity: recentIncidents.length,
-          recommendations: [
-            'Review alerting thresholds for frequently affected services',
-            'Schedule reliability review meeting',
-            'Update incident runbooks'
-          ],
-          generatedAt: new Date()
-        };
-        
-        await cacheService.set(cacheKey, dashboard, 1800); // Cache for 30 minutes
-      }
-      
-      res.json({
-        success: true,
-        data: dashboard
-      });
-    } catch (error) {
-      console.error('Get AI dashboard error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch AI dashboard'
-      });
-    }
-  }
-
-  // Real-time anomaly detection
   async detectAnomalies(req, res) {
     try {
       const { timeRange = '1h' } = req.query;
       
-      // Get incident frequency
       const startTime = new Date();
       if (timeRange === '1h') startTime.setHours(startTime.getHours() - 1);
       else if (timeRange === '24h') startTime.setDate(startTime.getDate() - 1);
@@ -467,7 +395,6 @@ class AIController {
         createdAt: { $gte: startTime }
       });
       
-      // Calculate baseline
       const previousPeriod = new Date(startTime);
       previousPeriod.setDate(previousPeriod.getDate() - 7);
       
@@ -476,36 +403,13 @@ class AIController {
       });
       
       const currentRate = incidents.length;
-      const baselineRate = baselineIncidents.length / 7; // Average per day
-      
-      const isAnomaly = currentRate > baselineRate * 2; // 2x baseline is anomaly
+      const baselineRate = baselineIncidents.length / 7;
+      const isAnomaly = currentRate > baselineRate * 2;
       
       let aiAnalysis = null;
       
       if (isAnomaly) {
-        const openai = require('openai');
-        const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-        
-        const completion = await client.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: "You are an anomaly detection AI."
-            },
-            {
-              role: "user",
-              content: `
-                Detected anomaly: ${currentRate} incidents in ${timeRange} vs baseline ${baselineRate.toFixed(1)} per day.
-                Please provide analysis and recommended actions.
-              `
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 400
-        });
-        
-        aiAnalysis = completion.choices[0].message.content;
+        aiAnalysis = await aiService.analyzeAnomaly(currentRate, baselineRate, timeRange);
       }
       
       res.json({
@@ -513,11 +417,12 @@ class AIController {
         data: {
           isAnomaly,
           currentRate,
-          baselineRate,
+          baselineRate: baselineRate.toFixed(2),
           timeRange,
           incidentCount: incidents.length,
           aiAnalysis,
-          timestamp: new Date()
+          timestamp: new Date(),
+          model: 'gemini-pro'
         }
       });
     } catch (error) {
@@ -529,8 +434,150 @@ class AIController {
     }
   }
 
+  async generateRecommendations(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const incident = await Incident.findById(id);
+      if (!incident) {
+        return res.status(404).json({
+          success: false,
+          message: 'Incident not found'
+        });
+      }
+      
+      const cacheKey = `ai:recommendations:${id}`;
+      let recommendations = await cacheService.get(cacheKey);
+      
+      if (!recommendations) {
+        const result = await aiService.generateRecommendations(incident);
+        
+        recommendations = {
+          recommendations: result,
+          priority: incident.severity === 'SEV0' ? 'Critical' : 'High',
+          generatedAt: new Date(),
+          model: 'gemini-pro'
+        };
+        
+        await cacheService.set(cacheKey, recommendations, 3600);
+      }
+      
+      res.json({
+        success: true,
+        data: recommendations
+      });
+    } catch (error) {
+      console.error('Generate recommendations error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate recommendations'
+      });
+    }
+  }
 
-  // Analyze incident health and provide recommendations
+  // Get AI Dashboard Insights
+async getAIDashboard(req, res) {
+  try {
+    const cacheKey = 'ai:dashboard';
+    let dashboard = await cacheService.get(cacheKey);
+    
+    if (!dashboard) {
+      // Get recent incidents (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const recentIncidents = await Incident.find({
+        createdAt: { $gte: sevenDaysAgo }
+      });
+      
+      // Get common issues
+      const commonServices = await Incident.aggregate([
+        { $unwind: '$affectedServices' },
+        { $group: { _id: '$affectedServices', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 }
+      ]);
+      
+      // Calculate metrics
+      const resolvedIncidents = recentIncidents.filter(i => i.status === 'RESOLVED');
+      const avgResolutionTime = resolvedIncidents.length > 0 ?
+        resolvedIncidents.reduce((acc, i) => {
+          const resolutionTime = i.resolvedAt ? (i.resolvedAt - i.createdAt) / 1000 / 60 : 0;
+          return acc + resolutionTime;
+        }, 0) / resolvedIncidents.length : 0;
+      
+      const prompt = `
+        Based on this operational data, provide insights and recommendations:
+        
+        Recent Activity (Last 7 days):
+        - Total Incidents: ${recentIncidents.length}
+        - Resolved: ${resolvedIncidents.length}
+        - Average Resolution Time: ${avgResolutionTime.toFixed(0)} minutes
+        - Most Affected Services: ${commonServices.map(s => `${s._id} (${s.count})`).join(', ')}
+        
+        Severity Breakdown:
+        - SEV0: ${recentIncidents.filter(i => i.severity === 'SEV0').length}
+        - SEV1: ${recentIncidents.filter(i => i.severity === 'SEV1').length}
+        - SEV2: ${recentIncidents.filter(i => i.severity === 'SEV2').length}
+        
+        Provide:
+        1. Key insights about system reliability
+        2. Top 3 recommendations for improvement
+        3. Services that need attention
+        4. Team performance insights
+        
+        Format as JSON with keys: insights, recommendations, servicesToWatch, performanceNotes
+      `;
+      
+      const aiResponse = await aiService.generateContent(prompt, {
+        temperature: 0.4,
+        maxTokens: 800
+      });
+      
+      let parsedResponse;
+      try {
+        parsedResponse = JSON.parse(aiResponse);
+      } catch {
+        parsedResponse = {
+          insights: aiResponse,
+          recommendations: ["Review incident patterns", "Improve monitoring"],
+          servicesToWatch: commonServices.map(s => s._id),
+          performanceNotes: "Analysis based on recent data"
+        };
+      }
+      
+      dashboard = {
+        insights: parsedResponse.insights,
+        recommendations: parsedResponse.recommendations,
+        servicesToWatch: parsedResponse.servicesToWatch,
+        performanceNotes: parsedResponse.performanceNotes,
+        metrics: {
+          totalIncidents: recentIncidents.length,
+          resolvedIncidents: resolvedIncidents.length,
+          averageResolutionTime: avgResolutionTime.toFixed(0),
+          topServices: commonServices
+        },
+        generatedAt: new Date(),
+        model: 'gemini-pro'
+      };
+      
+      await cacheService.set(cacheKey, dashboard, 1800);
+    }
+    
+    res.json({
+      success: true,
+      data: dashboard
+    });
+  } catch (error) {
+    console.error('Get AI dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch AI dashboard'
+    });
+  }
+}
+
+// Analyze Incident Health
 async analyzeIncidentHealth(req, res) {
   try {
     const { id } = req.params;
@@ -555,63 +602,72 @@ async analyzeIncidentHealth(req, res) {
         ? (timeline[0].timestamp - incident.createdAt) / 1000 / 60 
         : null;
       
-      const updateFrequency = incident.updates.length / 
-        ((incident.resolvedAt || new Date()) - incident.createdAt) * 1000 * 60 * 60;
-      
+      const incidentAge = (new Date() - incident.createdAt) / 1000 / 60;
+      const updateFrequency = incident.updates.length / (incidentAge / 60); // updates per hour
       const responderCount = incident.responders.length;
       const hasAIAnalysis = incident.aiSummary ? true : false;
       
-      const openai = require('openai');
-      const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
+      const prompt = `
+        Analyze this incident's health and provide a score:
+        
+        Incident: ${incident.title}
+        Severity: ${incident.severity}
+        Status: ${incident.status}
+        
+        Metrics:
+        - Time to detect: ${timeToDetect ? timeToDetect.toFixed(1) : 'N/A'} minutes
+        - Incident age: ${incidentAge.toFixed(0)} minutes
+        - Update frequency: ${updateFrequency.toFixed(1)} updates/hour
+        - Responders assigned: ${responderCount}
+        - Has AI analysis: ${hasAIAnalysis}
+        - Total updates: ${incident.updates.length}
+        - Timeline events: ${timeline.length}
+        
+        Calculate:
+        1. Health score (0-100)
+        2. Risk level (Low/Medium/High/Critical)
+        3. Response effectiveness rating
+        4. Specific recommendations for improvement
+        
+        Return as JSON with keys: healthScore, riskLevel, effectiveness, recommendations
+      `;
       
-      const completion = await client.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are an incident health analyzer. Provide a health score and recommendations."
-          },
-          {
-            role: "user",
-            content: `
-              Analyze this incident's health:
-              - Time to detect: ${timeToDetect} minutes
-              - Update frequency: ${updateFrequency} updates/hour
-              - Responder count: ${responderCount}
-              - Has AI analysis: ${hasAIAnalysis}
-              - Current status: ${incident.status}
-              - Severity: ${incident.severity}
-              
-              Provide:
-              1. Health score (0-100)
-              2. Risk level (Low/Medium/High/Critical)
-              3. Improvement recommendations
-              4. Estimated time to resolution
-            `
-          }
-        ],
+      const aiResponse = await aiService.generateContent(prompt, {
         temperature: 0.3,
-        max_tokens: 500
+        maxTokens: 600
       });
       
+      let parsedResponse;
+      try {
+        parsedResponse = JSON.parse(aiResponse);
+      } catch {
+        parsedResponse = {
+          healthScore: 70,
+          riskLevel: incident.severity === 'SEV0' ? 'Critical' : 'Medium',
+          effectiveness: "Adequate",
+          recommendations: ["Increase update frequency", "Add more responders"]
+        };
+      }
+      
       healthAnalysis = {
-        healthScore: 75, // Default, AI will provide better
-        riskLevel: incident.severity === 'SEV0' ? 'Critical' : 
-                   incident.severity === 'SEV1' ? 'High' : 'Medium',
-        analysis: completion.choices[0].message.content,
+        healthScore: parsedResponse.healthScore,
+        riskLevel: parsedResponse.riskLevel,
+        effectiveness: parsedResponse.effectiveness,
+        analysis: parsedResponse.recommendations,
         metrics: {
           timeToDetect: timeToDetect ? `${timeToDetect.toFixed(1)} minutes` : 'N/A',
-          updateFrequency: updateFrequency.toFixed(1),
+          incidentAge: `${incidentAge.toFixed(0)} minutes`,
+          updateFrequency: `${updateFrequency.toFixed(1)} updates/hour`,
           responderCount,
+          totalUpdates: incident.updates.length,
+          timelineEvents: timeline.length,
           hasAIAnalysis
         },
-        recommendations: [
-          'Increase update frequency',
-          'Add more responders if severity is high',
-          'Enable AI assistance for faster resolution'
-        ],
-        estimatedResolution: incident.status === 'RESOLVED' ? 'Resolved' : 'Unknown',
-        generatedAt: new Date()
+        recommendations: Array.isArray(parsedResponse.recommendations) ? 
+          parsedResponse.recommendations : 
+          ["Monitor closely", "Communicate with stakeholders", "Document learnings"],
+        generatedAt: new Date(),
+        model: 'gemini-pro'
       };
       
       await cacheService.set(cacheKey, healthAnalysis, 1800);
@@ -626,192 +682,6 @@ async analyzeIncidentHealth(req, res) {
     res.status(500).json({
       success: false,
       message: 'Failed to analyze incident health'
-    });
-  }
-}
-
-// Generate incident response recommendations
-async generateRecommendations(req, res) {
-  try {
-    const { id } = req.params;
-    
-    const incident = await Incident.findById(id);
-    if (!incident) {
-      return res.status(404).json({
-        success: false,
-        message: 'Incident not found'
-      });
-    }
-    
-    const timeline = await TimelineEvent.find({ incidentId: id })
-      .sort({ timestamp: -1 })
-      .limit(10);
-    
-    const cacheKey = `ai:recommendations:${id}`;
-    let recommendations = await cacheService.get(cacheKey);
-    
-    if (!recommendations) {
-      const openai = require('openai');
-      const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-      
-      const completion = await client.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are an incident response expert. Provide actionable recommendations."
-          },
-          {
-            role: "user",
-            content: `
-              Based on this incident:
-              Title: ${incident.title}
-              Severity: ${incident.severity}
-              Status: ${incident.status}
-              Recent updates: ${timeline.map(t => t.description).join('; ')}
-              
-              Provide:
-              1. Immediate actions to take
-              2. Short-term mitigation steps
-              3. Long-term preventive measures
-              4. Communication strategy
-              5. Resource requirements
-            `
-          }
-        ],
-        temperature: 0.5,
-        max_tokens: 800
-      });
-      
-      recommendations = {
-        incidentId: id,
-        recommendations: completion.choices[0].message.content,
-        priority: incident.severity === 'SEV0' ? 'Critical' : 'High',
-        estimatedEffort: incident.severity === 'SEV0' ? '2-4 hours' : '1-2 hours',
-        generatedAt: new Date(),
-        actionItems: [
-          { action: "Assess impact scope", priority: "High", estimatedTime: "30 min" },
-          { action: "Communicate with stakeholders", priority: "High", estimatedTime: "15 min" },
-          { action: "Implement workaround", priority: "Medium", estimatedTime: "1 hour" },
-          { action: "Root cause investigation", priority: "Medium", estimatedTime: "2 hours" }
-        ]
-      };
-      
-      await cacheService.set(cacheKey, recommendations, 3600);
-    }
-    
-    res.json({
-      success: true,
-      data: recommendations
-    });
-  } catch (error) {
-    console.error('Generate recommendations error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate recommendations'
-    });
-  }
-}
-
-// Chat with AI about incident (interactive Q&A)
-async chatWithAI(req, res) {
-  try {
-    const { id } = req.params;
-    const { question, conversationHistory = [] } = req.body;
-    
-    if (!question) {
-      return res.status(400).json({
-        success: false,
-        message: 'Question is required'
-      });
-    }
-    
-    const incident = await Incident.findById(id);
-    if (!incident) {
-      return res.status(404).json({
-        success: false,
-        message: 'Incident not found'
-      });
-    }
-    
-    const timeline = await TimelineEvent.find({ incidentId: id })
-      .populate('performedBy', 'name')
-      .sort({ timestamp: -1 })
-      .limit(20);
-    
-    const openai = require('openai');
-    const client = new openai({ apiKey: process.env.OPENAI_API_KEY });
-    
-    const messages = [
-      {
-        role: "system",
-        content: `You are an AI assistant helping with incident: ${incident.title}. 
-                  You have access to incident details, timeline, and updates.
-                  Provide helpful, accurate, and concise answers based on the incident context.`
-      },
-      {
-        role: "user",
-        content: `
-          Incident Context:
-          Title: ${incident.title}
-          Description: ${incident.description}
-          Severity: ${incident.severity}
-          Status: ${incident.status}
-          Affected Services: ${incident.affectedServices.join(', ')}
-          
-          Timeline Events:
-          ${timeline.map(t => `- ${t.timestamp}: ${t.description} (by ${t.performedBy?.name || 'System'})`).join('\n')}
-          
-          Recent Updates:
-          ${incident.updates.slice(-5).map(u => `- ${u.timestamp}: ${u.message}`).join('\n')}
-          
-          AI Summary: ${incident.aiSummary || 'Not available'}
-          AI Root Cause: ${incident.aiRootCause || 'Not available'}
-          
-          Conversation History:
-          ${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}
-          
-          Question: ${question}
-        `
-      }
-    ];
-    
-    const completion = await client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      temperature: 0.7,
-      max_tokens: 1000
-    });
-    
-    const answer = completion.choices[0].message.content;
-    
-    // Store conversation in cache for context
-    const conversationKey = `ai:chat:${id}:${req.user.id}`;
-    const updatedHistory = [
-      ...conversationHistory,
-      { role: "user", content: question, timestamp: new Date() },
-      { role: "assistant", content: answer, timestamp: new Date() }
-    ];
-    await cacheService.set(conversationKey, updatedHistory, 1800);
-    
-    res.json({
-      success: true,
-      data: {
-        question,
-        answer,
-        conversationId: conversationKey,
-        timestamp: new Date(),
-        context: {
-          incidentTitle: incident.title,
-          incidentStatus: incident.status
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Chat with AI error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get AI response'
     });
   }
 }
@@ -845,7 +715,12 @@ async bulkAnalyzeIncidents(req, res) {
       let analysis = null;
       
       if (analysisType === 'summary') {
-        analysis = await aiService.generateIncidentSummary(incident);
+        const result = await aiService.generateIncidentSummary(incident);
+        analysis = {
+          summary: result?.summary,
+          rootCause: result?.rootCauses,
+          generatedAt: new Date()
+        };
       } else if (analysisType === 'health') {
         const timeline = await TimelineEvent.find({ incidentId: incident._id });
         analysis = {
@@ -853,14 +728,40 @@ async bulkAnalyzeIncidents(req, res) {
           rootCause: incident.aiRootCause,
           updateCount: incident.updates.length,
           responderCount: incident.responders.length,
-          timelineLength: timeline.length
+          timelineLength: timeline.length,
+          status: incident.status,
+          severity: incident.severity
         };
       }
       
       analyses.push({
         incidentId: incident._id,
         title: incident.title,
+        severity: incident.severity,
+        status: incident.status,
         analysis
+      });
+    }
+    
+    // Generate overall insights if multiple incidents
+    let overallInsights = null;
+    if (incidents.length > 1) {
+      const prompt = `
+        Analyze these ${incidents.length} incidents and provide overall insights:
+        
+        ${incidents.map((incident, i) => `
+          Incident ${i + 1}: ${incident.title} (${incident.severity}) - ${incident.status}
+        `).join('\n')}
+        
+        Provide:
+        1. Common patterns
+        2. Systemic issues
+        3. Recommendations for prevention
+      `;
+      
+      overallInsights = await aiService.generateContent(prompt, {
+        temperature: 0.4,
+        maxTokens: 500
       });
     }
     
@@ -870,7 +771,9 @@ async bulkAnalyzeIncidents(req, res) {
         totalAnalyzed: analyses.length,
         analysisType,
         analyses,
-        generatedAt: new Date()
+        overallInsights,
+        generatedAt: new Date(),
+        model: 'gemini-pro'
       }
     });
   } catch (error) {
@@ -900,15 +803,26 @@ async getAnalysisConfidence(req, res) {
     const responderCount = incident.responders.length;
     const hasTimeline = timeline.length > 0;
     const hasUpdates = updatesCount > 0;
+    const hasAISummary = !!incident.aiSummary;
+    const hasRootCause = !!incident.aiRootCause;
     
     // Calculate confidence based on available data
     let confidenceScore = 0;
+    const factors = {
+      hasTimeline: { status: hasTimeline, weight: 25, contribution: 0 },
+      hasUpdates: { status: hasUpdates, weight: 25, contribution: 0 },
+      hasResponders: { status: responderCount > 0, weight: 20, contribution: 0 },
+      hasAISummary: { status: hasAISummary, weight: 15, contribution: 0 },
+      hasRootCause: { status: hasRootCause, weight: 15, contribution: 0 }
+    };
     
-    if (hasTimeline) confidenceScore += 30;
-    if (hasUpdates) confidenceScore += 25;
-    if (responderCount > 0) confidenceScore += 20;
-    if (incident.aiSummary) confidenceScore += 15;
-    if (incident.resolvedAt) confidenceScore += 10;
+    // Calculate contributions
+    for (const [key, factor] of Object.entries(factors)) {
+      if (factor.status) {
+        factor.contribution = factor.weight;
+        confidenceScore += factor.weight;
+      }
+    }
     
     // Cap at 95
     confidenceScore = Math.min(confidenceScore, 95);
@@ -918,13 +832,17 @@ async getAnalysisConfidence(req, res) {
     else if (confidenceScore >= 50) confidenceLevel = 'Medium';
     else confidenceLevel = 'Low';
     
-    const factors = {
-      hasTimeline: { status: hasTimeline, weight: 30, contribution: hasTimeline ? 30 : 0 },
-      hasUpdates: { status: hasUpdates, weight: 25, contribution: hasUpdates ? 25 : 0 },
-      hasResponders: { status: responderCount > 0, weight: 20, contribution: responderCount > 0 ? 20 : 0 },
-      hasAISummary: { status: !!incident.aiSummary, weight: 15, contribution: !!incident.aiSummary ? 15 : 0 },
-      isResolved: { status: !!incident.resolvedAt, weight: 10, contribution: !!incident.resolvedAt ? 10 : 0 }
-    };
+    // Generate AI recommendation if confidence is low
+    let recommendations = [];
+    if (confidenceScore < 70) {
+      const missingItems = [];
+      if (!hasTimeline) missingItems.push('Add timeline events');
+      if (!hasUpdates) missingItems.push('Add regular updates');
+      if (responderCount === 0) missingItems.push('Assign responders');
+      if (!hasAISummary) missingItems.push('Generate AI summary');
+      
+      recommendations = missingItems;
+    }
     
     res.json({
       success: true,
@@ -933,12 +851,14 @@ async getAnalysisConfidence(req, res) {
         confidenceScore,
         confidenceLevel,
         factors,
-        recommendations: confidenceScore < 70 ? [
-          'Add more timeline events',
-          'Increase update frequency',
-          'Assign more responders',
-          'Generate AI summary for better insights'
-        ] : [],
+        recommendations,
+        dataQuality: {
+          timelineEvents: timeline.length,
+          totalUpdates: updatesCount,
+          responderCount,
+          hasAISummary,
+          hasRootCause
+        },
         generatedAt: new Date()
       }
     });
@@ -951,11 +871,9 @@ async getAnalysisConfidence(req, res) {
   }
 }
 
-// Train AI model on custom data (admin only)
+// Train AI model on custom data (Admin only)
 async trainAIModel(req, res) {
   try {
-    const { trainingData, modelType = 'incident-pattern' } = req.body;
-    
     // Check admin权限
     if (req.user.role !== 'admin') {
       return res.status(403).json({
@@ -964,6 +882,8 @@ async trainAIModel(req, res) {
       });
     }
     
+    const { trainingData, modelType = 'incident-pattern' } = req.body;
+    
     if (!trainingData || !Array.isArray(trainingData)) {
       return res.status(400).json({
         success: false,
@@ -971,39 +891,79 @@ async trainAIModel(req, res) {
       });
     }
     
-    // Log training request (in production, you would actually train a model)
+    if (trainingData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Training data cannot be empty'
+      });
+    }
+    
+    // Log training request (Gemini doesn't support fine-tuning in free tier)
     console.log(`Training request received for model: ${modelType}`);
     console.log(`Training data size: ${trainingData.length} samples`);
     
-    // Store training metadata
+    // Validate training data format
+    const validSamples = trainingData.filter(sample => 
+      sample.incident && sample.resolution
+    );
+    
+    if (validSamples.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid training data format. Each sample needs "incident" and "resolution" fields'
+      });
+    }
+    
+    // Store training metadata for future reference
     const trainingMetadata = {
       modelType,
-      samplesCount: trainingData.length,
+      samplesCount: validSamples.length,
       triggeredBy: req.user.id,
+      triggeredByEmail: req.user.email,
       triggeredAt: new Date(),
-      status: 'queued'
+      status: 'completed',
+      note: 'Gemini doesn\'t support fine-tuning in free tier. This is a mock training record.'
     };
     
     await cacheService.set(`ai:training:${Date.now()}`, trainingMetadata, 86400);
     
+    // Generate a sample insight using the training data
+    const sampleIncident = validSamples[0];
+    const prompt = `
+      Based on this example incident and resolution:
+      
+      Incident: ${sampleIncident.incident}
+      Resolution: ${sampleIncident.resolution}
+      
+      Generate a general guideline for handling similar incidents.
+    `;
+    
+    const insight = await aiService.generateContent(prompt, {
+      temperature: 0.5,
+      maxTokens: 300
+    });
+    
     res.json({
       success: true,
-      message: 'Training job queued successfully',
+      message: 'Training data recorded successfully',
       data: {
         modelType,
-        samplesCount: trainingData.length,
-        estimatedCompletion: 'This is a mock response. In production, actual model training would occur.',
-        trainingId: Date.now().toString()
+        samplesCount: validSamples.length,
+        trainingId: Date.now().toString(),
+        status: 'completed',
+        insight: insight || 'Training data accepted',
+        note: 'Gemini uses few-shot learning. Provide examples in prompts for better results.'
       }
     });
   } catch (error) {
     console.error('Train AI model error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to queue training job'
+      message: 'Failed to process training data'
     });
   }
 }
+
 }
 
 module.exports = new AIController();
