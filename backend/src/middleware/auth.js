@@ -1,65 +1,53 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const RedisClient = require('../config/redis');
-const {
-  getMockUserById,
-  attachMockUser,
-} = require('../config/mockUsers');
 
 const protect = async (req, res, next) => {
   let token;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7).trim();
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
+  
+  // if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      token = req.cookies.token;
 
+      // Check if token is blacklisted
+        const blacklistKey = `blacklist:${token}`;
+        const blacklisted = await RedisClient.get(blacklistKey);
+        console.log('Checking token blacklist:', blacklistKey, blacklisted);
+
+        if (blacklisted === 'true') {
+          return res.status(401).json({
+            success: false,
+            message: 'Token has been invalidated'
+          });
+        }
+
+
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      req.user = await User.findById(decoded.id).select('-password');
+      
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      
+      next();
+    } catch (error) {
+      console.error('Auth error:', error);
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized, token failed'
+      });
+    }
+  // }
+  
   if (!token) {
     return res.status(401).json({
       success: false,
-      message: 'Not authorized, no token',
-    });
-  }
-
-  try {
-    const blacklisted = await RedisClient.get(`blacklist:${token}`);
-    if (blacklisted) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token is blacklisted. Please login again.',
-      });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    if (process.env.SKIP_DATABASE === 'true') {
-      const mock = getMockUserById(decoded.id);
-      if (!mock) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found',
-        });
-      }
-      req.user = attachMockUser(mock);
-      return next();
-    }
-
-    req.user = await User.findById(decoded.id).select('-password');
-
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    return next();
-  } catch (error) {
-    console.error('Auth error:', error);
-    return res.status(401).json({
-      success: false,
-      message: 'Not authorized, token failed',
+      message: 'Not authorized, no token'
     });
   }
 };
@@ -69,7 +57,7 @@ const authorize = (...roles) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: `User role ${req.user.role} is not authorized to access this route`,
+        message: `User role ${req.user.role} is not authorized to access this route`
       });
     }
     next();

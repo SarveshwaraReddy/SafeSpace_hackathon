@@ -53,7 +53,7 @@ class CacheService {
     
     this.initPromise = (async () => {
       try {
-        await redisClient.connect();
+        // await redisClient.connect();
         this.useRedis = redisClient.isConnected;
         if (this.useRedis) {
           console.log('✅ Using Redis cache');
