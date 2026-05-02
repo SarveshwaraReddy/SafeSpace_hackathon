@@ -2,12 +2,22 @@ const OpenAI = require('openai');
 
 class AIService {
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    if (process.env.OPENAI_API_KEY) {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    } else {
+      console.log('⚠️  OpenAI API key not found, AI features disabled');
+      this.openai = null;
+    }
   }
 
   async generateIncidentSummary(incident) {
+    if (!this.openai) {
+      console.log('AI service disabled, skipping incident summary generation');
+      return null;
+    }
+
     try {
       const prompt = `
         Analyze this production incident and provide:
@@ -56,6 +66,11 @@ class AIService {
   }
 
   async analyzeIncidentTimeline(incident, timeline) {
+    if (!this.openai) {
+      console.log('AI service disabled, skipping timeline analysis');
+      return null;
+    }
+
     try {
       const prompt = `
         Analyze this incident timeline and provide:
@@ -92,6 +107,11 @@ class AIService {
   }
 
   async generatePostmortem(incident, timeline, resolution) {
+    if (!this.openai) {
+      console.log('AI service disabled, skipping postmortem generation');
+      return null;
+    }
+
     try {
       const prompt = `
         Generate a comprehensive postmortem report for this incident including:

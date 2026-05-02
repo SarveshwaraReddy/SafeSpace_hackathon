@@ -1,15 +1,24 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import { ShieldAlert, LayoutDashboard, AlertTriangle, Activity, Settings, Bell, LogOut } from 'lucide-react';
+import { logout } from '../redux/slices/authSlice';
 import clsx from 'clsx';
 
 export default function Navbar() {
   const location = useLocation();
-  
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Incidents', path: '/incidents', icon: AlertTriangle },
     { name: 'Status', path: '/status', icon: Activity },
   ];
+
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate('/login');
+  };
 
   return (
     <div className="w-64 bg-surface border-r border-slate-800 flex flex-col z-20 shadow-xl">
@@ -21,7 +30,7 @@ export default function Navbar() {
           <span className="font-bold text-xl tracking-tight">SafeSpace</span>
         </Link>
       </div>
-      
+
       <div className="flex-1 py-6 px-4 space-y-1">
         <div className="text-xs font-semibold text-slate-500 mb-4 px-2 tracking-wider">COMMAND CENTER</div>
         {navItems.map((item) => {
@@ -33,8 +42,8 @@ export default function Navbar() {
               to={item.path}
               className={clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                isActive 
-                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.15)]' 
+                isActive
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
               )}
             >
@@ -50,7 +59,10 @@ export default function Navbar() {
           <Settings size={18} className="text-slate-500" />
           Settings
         </button>
-        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors w-full text-left">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors w-full text-left"
+        >
           <LogOut size={18} className="text-red-500/70" />
           Sign Out
         </button>

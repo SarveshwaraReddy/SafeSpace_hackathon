@@ -33,9 +33,17 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS configuration
+// CORS configuration (Vite default is 5173; comma-separate CLIENT_URL for multiple origins)
+const corsOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    callback(null, corsOrigins.includes(origin));
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -68,7 +76,7 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV,
-    version: require('../../package.json').version
+    version: require('../package.json').version
   });
 });
 
