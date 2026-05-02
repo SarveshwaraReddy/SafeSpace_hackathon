@@ -26,7 +26,7 @@ class AIController {
           summary: result?.summary || incident.aiSummary,
           rootCauses: result?.rootCauses || incident.aiRootCause,
           generatedAt: new Date(),
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         };
         
         await cacheService.set(cacheKey, aiSummary, 3600);
@@ -71,7 +71,7 @@ class AIController {
           confidence: 0.75,
           analyzedAt: new Date(),
           eventsAnalyzed: timeline.length,
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         };
         
         await cacheService.set(cacheKey, analysis, 3600);
@@ -182,7 +182,7 @@ async findSimilarIncidents(req, res) {
         })),
         count: similarIncidents.length,
         generatedAt: new Date(),
-        model: 'gemini-pro'
+        model: 'gemini-2.5-flash'
       };
       
       // Cache for 30 minutes
@@ -245,7 +245,7 @@ async findSimilarIncidents(req, res) {
           data: historicalData,
           generatedAt: new Date(),
           validFor: `${days} days`,
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         };
         
         await cacheService.set(cacheKey, predictions, 86400);
@@ -301,7 +301,7 @@ async findSimilarIncidents(req, res) {
           answer,
           conversationId: conversationKey,
           timestamp: new Date(),
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         }
       });
     } catch (error) {
@@ -363,7 +363,7 @@ async findSimilarIncidents(req, res) {
           fullReport: response,
           generatedAt: new Date(),
           aiGenerated: true,
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         };
         
         await cacheService.set(cacheKey, postmortem, 7200);
@@ -422,7 +422,7 @@ async findSimilarIncidents(req, res) {
           incidentCount: incidents.length,
           aiAnalysis,
           timestamp: new Date(),
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         }
       });
     } catch (error) {
@@ -456,7 +456,7 @@ async findSimilarIncidents(req, res) {
           recommendations: result,
           priority: incident.severity === 'SEV0' ? 'Critical' : 'High',
           generatedAt: new Date(),
-          model: 'gemini-pro'
+          model: 'gemini-2.5-flash'
         };
         
         await cacheService.set(cacheKey, recommendations, 3600);
@@ -558,7 +558,7 @@ async getAIDashboard(req, res) {
           topServices: commonServices
         },
         generatedAt: new Date(),
-        model: 'gemini-pro'
+        model: 'gemini-2.5-flash'
       };
       
       await cacheService.set(cacheKey, dashboard, 1800);
@@ -667,7 +667,7 @@ async analyzeIncidentHealth(req, res) {
           parsedResponse.recommendations : 
           ["Monitor closely", "Communicate with stakeholders", "Document learnings"],
         generatedAt: new Date(),
-        model: 'gemini-pro'
+        model: 'gemini-2.5-flash'
       };
       
       await cacheService.set(cacheKey, healthAnalysis, 1800);
@@ -773,7 +773,7 @@ async bulkAnalyzeIncidents(req, res) {
         analyses,
         overallInsights,
         generatedAt: new Date(),
-        model: 'gemini-pro'
+        model: 'gemini-2.5-flash'
       }
     });
   } catch (error) {

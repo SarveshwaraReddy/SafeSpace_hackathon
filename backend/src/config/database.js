@@ -8,6 +8,12 @@ class Database {
   async connect() {
     if (this.isConnected) return;
 
+    // Skip database connection if disabled
+    if (process.env.SKIP_DATABASE === 'true') {
+      console.log('📦 Database connection skipped (SKIP_DATABASE=true)');
+      return;
+    }
+
     try {
       await mongoose.connect(process.env.MONGODB_URI, {
         maxPoolSize: 10,

@@ -37,7 +37,7 @@ export default function LandingPage() {
   const features = [
     { name: "⚡ Alerts" },
     { name: "🤖 AI Routing" },
-    { name: "📊 Dashboard", path: "/dashboard" }, // 👈 redirect
+    { name: "📊 Dashboard", path: "/login" }, // 👈 redirect
     { name: "🚀 Speed" },
   ];
 
@@ -85,7 +85,7 @@ export default function LandingPage() {
         {/* 🔘 BUTTONS */}
         <div className="flex gap-4 mt-8">
           <motion.button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/login")}
             whileHover={{ scale: 1.1 }}
             className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-lg"
           >
@@ -150,7 +150,7 @@ export default function LandingPage() {
         <h2 className="text-4xl mb-6">Ready Before the Next Incident 🚀</h2>
 
         <motion.button
-          onClick={() => navigate("/dashboard")}
+          onClick={() => navigate("/login")}
           whileHover={{ scale: 1.1 }}
           className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl shadow-xl"
         >

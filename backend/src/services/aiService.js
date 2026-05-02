@@ -16,8 +16,8 @@ class AIService {
     
     try {
       this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      // Use gemini-pro model for text generation
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+      // Use gemini-2.5-flash model for text generation
+      this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       this.isInitialized = true;
       console.log('✅ Gemini AI service initialized');
     } catch (error) {
@@ -64,7 +64,7 @@ class AIService {
         - Title: ${incident.title}
         - Description: ${incident.description}
         - Severity: ${incident.severity}
-        - Affected Services: ${incident.affectedServices.join(', ')}
+        - Affected Services: ${incident.affectedServices ? incident.affectedServices.join(', ') : 'Not specified'}
         
         Format your response as JSON with keys: summary, rootCauses, actions
       `;
@@ -145,7 +145,7 @@ class AIService {
         Description: ${incident.description}
         Severity: ${incident.severity}
         Duration: ${incident.createdAt} to ${incident.resolvedAt || 'Ongoing'}
-        Affected Services: ${incident.affectedServices.join(', ')}
+        Affected Services: ${incident.affectedServices ? incident.affectedServices.join(', ') : 'Not specified'}
         
         Timeline:
         ${timeline.map(t => `- ${t.timestamp}: ${t.description}`).join('\n')}
@@ -243,14 +243,18 @@ class AIService {
         Description: ${incident.description}
         Severity: ${incident.severity}
         Status: ${incident.status}
-        Current Updates: ${incident.updates.length} updates recorded
+        Current Updates: ${incident.updates ? incident.updates.length : 0} updates recorded
+        Affected Services: ${incident.affectedServices ? incident.affectedServices.join(', ') : 'None'}
+        
+        AI Summary (if available): ${incident.aiSummary || 'Not available'}
+        AI Root Cause (if available): ${incident.aiRootCause || 'Not available'}
         
         Previous conversation:
         ${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}
         
         User Question: ${question}
         
-        Provide a helpful, accurate response based on the incident context.
+        Provide a helpful, accurate response based on the incident context. Be specific and actionable.
       `;
       
       const response = await this.generateContent(prompt, {
@@ -258,7 +262,7 @@ class AIService {
         maxTokens: 1000
       });
       
-      return response;
+      return response || "I'm having trouble analyzing the incident right now. Please try again later.";
     } catch (error) {
       console.error('Gemini chat error:', error);
       return "I'm having trouble analyzing the incident right now. Please try again later.";
@@ -271,12 +275,15 @@ class AIService {
         Analyze this anomaly in incident rate:
         
         Current Rate: ${currentRate} incidents per ${timeRange}
-        Baseline Rate: ${baselineRate} incidents per day
+        Baseline Rate: ${baselineRate.toFixed(2)} incidents per day
         
         Provide:
         1. Severity assessment (Low/Medium/High/Critical)
         2. Possible causes
         3. Recommended investigation steps
+        4. Immediate actions to take
+        
+        Format as a structured response.
       `;
       
       const response = await this.generateContent(prompt, {
@@ -299,12 +306,14 @@ class AIService {
         Incident: ${incident.title}
         Severity: ${incident.severity}
         Status: ${incident.status}
-        Affected Services: ${incident.affectedServices.join(', ')}
+        Affected Services: ${incident.affectedServices ? incident.affectedServices.join(', ') : 'Not specified'}
+        Description: ${incident.description}
         
         Provide:
         1. Immediate actions (next 30 minutes)
         2. Short-term fixes (next 2 hours)
         3. Long-term preventive measures
+        4. Communication strategy
         
         Be specific and actionable.
       `;
@@ -332,11 +341,16 @@ class AIService {
         - Responder count: ${metrics.responderCount}
         - Has timeline: ${metrics.hasTimeline}
         - Has AI analysis: ${metrics.hasAI}
+        - Incident age: ${metrics.incidentAge} minutes
+        - Total updates: ${metrics.totalUpdates}
         
         Provide:
         1. Health score (0-100)
-        2. Risk level
-        3. Improvement suggestions
+        2. Risk level (Low/Medium/High/Critical)
+        3. Response effectiveness rating
+        4. Specific improvement suggestions
+        
+        Return as JSON.
       `;
       
       const response = await this.generateContent(prompt, {
@@ -347,6 +361,116 @@ class AIService {
       return response;
     } catch (error) {
       console.error('Gemini health score error:', error);
+      return null;
+    }
+  }
+
+  async findSimilarIncidents(currentIncident, similarIncidents) {
+    try {
+      const prompt = `
+        Compare the current incident with similar past incidents and provide insights.
+        
+        Current Incident:
+        Title: ${currentIncident.title}
+        Description: ${currentIncident.description}
+        Severity: ${currentIncident.severity}
+        Affected Services: ${currentIncident.affectedServices ? currentIncident.affectedServices.join(', ') : 'Not specified'}
+        
+        Similar Past Incidents:
+        ${similarIncidents.map((incident, index) => `
+          Incident ${index + 1}:
+          - Title: ${incident.title}
+          - Severity: ${incident.severity}
+          - Status: ${incident.status}
+          - Resolution Time: ${incident.resolutionTime || 'N/A'} minutes
+        `).join('\n')}
+        
+        Please provide:
+        1. Common patterns between these incidents
+        2. Successful resolution strategies from past incidents
+        3. Estimated resolution time based on similar incidents
+        4. Recommended actions for the current incident
+        
+        Format as JSON with keys: patterns, strategies, estimatedTime, recommendations
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.3,
+        maxTokens: 800
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini find similar incidents error:', error);
+      return null;
+    }
+  }
+
+  async bulkAnalyze(incidents, analysisType) {
+    try {
+      const prompt = `
+        Analyze these ${incidents.length} incidents and provide insights:
+        
+        ${incidents.map((incident, i) => `
+          Incident ${i + 1}:
+          - Title: ${incident.title}
+          - Severity: ${incident.severity}
+          - Status: ${incident.status}
+          - Affected Services: ${incident.affectedServices ? incident.affectedServices.join(', ') : 'None'}
+        `).join('\n')}
+        
+        Analysis Type: ${analysisType}
+        
+        Provide:
+        1. Common patterns and trends
+        2. Systemic issues identified
+        3. Recommendations for prevention
+        4. Priority areas for improvement
+        
+        Format as JSON.
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.4,
+        maxTokens: 1000
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini bulk analyze error:', error);
+      return null;
+    }
+  }
+
+  async generateDashboardInsights(metrics) {
+    try {
+      const prompt = `
+        Generate operational insights based on these metrics:
+        
+        Total Incidents: ${metrics.totalIncidents}
+        Active Incidents: ${metrics.activeIncidents}
+        Resolved Today: ${metrics.resolvedToday}
+        Critical Incidents: ${metrics.criticalIncidents}
+        Average Resolution Time: ${metrics.averageResolutionTime} minutes
+        Top Services: ${metrics.topServices.join(', ')}
+        
+        Provide:
+        1. Key insights about system reliability
+        2. Top 3 recommendations for improvement
+        3. Services that need immediate attention
+        4. Team performance insights
+        
+        Format as JSON with keys: insights, recommendations, servicesToWatch, performanceNotes
+      `;
+      
+      const response = await this.generateContent(prompt, {
+        temperature: 0.4,
+        maxTokens: 800
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Gemini dashboard insights error:', error);
       return null;
     }
   }

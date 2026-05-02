@@ -11,9 +11,14 @@ class SocketManager {
   }
 
   initialize() {
+    const corsOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:3000')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+
     this.io = new Server(this.server, {
       cors: {
-        origin: process.env.CLIENT_URL || 'http://localhost:3000',
+        origin: corsOrigins,
         credentials: true,
         methods: ['GET', 'POST']
       },

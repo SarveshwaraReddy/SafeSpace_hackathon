@@ -5,14 +5,18 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
-const blacklistModel = require('../models/Blacklist');
 const RedisClient = require('../config/redis');
+const {
+  mockUsers,
+  getMockUserByEmail,
+  normalizeEmail,
+} = require('../config/mockUsers');
 
 // Rate limiting for auth endpoints
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
-  message: 'Too many login attempts, please try again later'
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 30,
+  message: 'Too many login attempts, please try again later',
 });
 
 const registerLimiter = rateLimit({
@@ -24,8 +28,32 @@ const registerLimiter = rateLimit({
 // Register new user
 router.post('/register', registerLimiter, async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
-    
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not set');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error',
+      });
+    }
+
+    if (process.env.SKIP_DATABASE === 'true') {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Registration is off in demo mode. Sign in with admin@safespace.com / password or responder@safespace.com / password.',
+      });
+    }
+
+    const { name, password, role } = req.body;
+    const email = normalizeEmail(req.body.email);
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required',
+      });
+    }
+
     // Check if user exists
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -49,7 +77,16 @@ router.post('/register', registerLimiter, async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
-    res.cookie('token', token);
+
+    const cookieOpts = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/',
+    };
+    res.cookie('token', token, cookieOpts);
+
     res.status(201).json({
       success: true,
       data: {
@@ -74,30 +111,67 @@ router.post('/register', registerLimiter, async (req, res) => {
 // Login user
 router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not set');
+      return res.status(500).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Server configuration error',
       });
     }
-    
-    // Check password
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
+
+    const email = normalizeEmail(req.body.email);
+    const password = req.body.password;
+
+    if (!email || password === undefined || password === null) {
+      return res.status(400).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Email and password are required',
       });
     }
-    
-    // Update last active
-    user.lastActive = new Date();
-    await user.save();
-    
+
+    let user;
+
+    if (process.env.SKIP_DATABASE === 'true') {
+      // Use mock user for hackathon
+      user = getMockUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+    } else {
+      // Find user (email normalized to match mongoose lowercase storage)
+      user = await User.findOne({ email });
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      // Check password
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      // Update last active
+      user.lastActive = new Date();
+      await user.save();
+    }
+
     // Generate token
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
@@ -105,8 +179,14 @@ router.post('/login', loginLimiter, async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    res.cookie('token', token);
-    
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
     res.json({
       success: true,
       data: {
@@ -131,7 +211,24 @@ router.post('/login', loginLimiter, async (req, res) => {
 // Get current user
 router.get('/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    let user;
+
+    if (process.env.SKIP_DATABASE === 'true') {
+      // Return mock user data
+      user = mockUsers.find(u => u._id === req.user.id);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      // Remove password from response
+      const { password, matchPassword, ...userData } = user;
+      user = userData;
+    } else {
+      user = await User.findById(req.user.id).select('-password');
+    }
+
     res.json({
       success: true,
       data: user

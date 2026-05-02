@@ -48,10 +48,7 @@ userSchema.pre('save', async function() {
 
 // Match password method - FIXED: removed next parameter
 userSchema.methods.matchPassword = async function(enteredPassword) {
-  console.log('Comparing passwords:', enteredPassword, this.password);
-  const result = await bcrypt.compare(enteredPassword, this.password);
-  console.log('Password match result:', result);
-  return result;
+  return bcrypt.compare(enteredPassword, this.password);
 };
 
 // Compare password (alias)
