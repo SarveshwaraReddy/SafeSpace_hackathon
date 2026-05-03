@@ -12,7 +12,7 @@ const protect = async (req, res, next) => {
       // Check if token is blacklisted
         const blacklistKey = `blacklist:${token}`;
         const blacklisted = await RedisClient.get(blacklistKey);
-        console.log('Checking token blacklist:', blacklistKey, blacklisted);
+        // console.log('Checking token blacklist:', blacklistKey, blacklisted);
 
         if (blacklisted === 'true') {
           return res.status(401).json({

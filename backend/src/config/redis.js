@@ -42,12 +42,12 @@ class RedisClient {
       let redisConfig;
       
       if (process.env.REDIS_URL) {
-        console.log(`🔄 Connecting to online Redis at ${process.env.REDIS_URL.replace(/\/\/.*@/, '//***:***@')}...`);
+        // console.log(`🔄 Connecting to online Redis at ${process.env.REDIS_URL.replace(/\/\/.*@/, '//***:***@')}...`);
         redisConfig = process.env.REDIS_URL;
       } else {
         const host = process.env.REDIS_HOST || 'localhost';
         const port = parseInt(process.env.REDIS_PORT) || 6379;
-        console.log(`🔄 Connecting to Redis at ${host}:${port}...`);
+        // console.log(`🔄 Connecting to Redis at ${host}:${port}...`);
         redisConfig = {
           host: host,
           port: port,

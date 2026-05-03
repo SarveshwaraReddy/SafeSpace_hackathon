@@ -141,8 +141,8 @@ const responderSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-responderSchema.index({ user: 1 });
-responderSchema.index({ employeeId: 1 });
+// responderSchema.index({ user: 1 });
+// responderSchema.index({ employeeId: 1 });
 responderSchema.index({ department: 1, role: 1 });
 responderSchema.index({ 'availability.isOnCall': 1, 'availability.currentStatus': 1 });
 
