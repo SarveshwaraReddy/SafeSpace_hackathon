@@ -17,4 +17,10 @@ router.route('/:id/availability')
 
 router.get('/on-call/current', protect, responderController.getCurrentOnCall);
 
+// Assign responder to incident
+router.post('/:id/assign/:incidentId',protect, responderController.assignToIncident);
+
+// Get all incidents assigned to a responder
+router.get('/:id/incidents', protect, responderController.getResponderIncidents);
+
 module.exports = router;
