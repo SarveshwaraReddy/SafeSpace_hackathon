@@ -34,21 +34,30 @@ app.use(helmet({
 }));
 
 // CORS configuration (Vite default is 5173; comma-separate CLIENT_URL for multiple origins)
-const corsOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:3000')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+// const corsOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:3000')
+//   .split(',')
+//   .map((o) => o.trim())
+//   .filter(Boolean);
+
+// app.use(cors({
+//   origin: (origin, callback) => {
+//     if (!origin) return callback(null, true);
+//     callback(null, corsOrigins.includes(origin));
+//   },
+//   credentials: true,
+//   optionsSuccessStatus: 200,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+// }));
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    callback(null, corsOrigins.includes(origin));
-  },
-  credentials: true,
-  optionsSuccessStatus: 200,
+  origin: true, // allow all origins dynamically
+  credentials: true, // allow cookies / auth headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
