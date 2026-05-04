@@ -20,7 +20,7 @@ const authRoutes = require('./routes/auth');
 
 const app = express();
 // Serve static files from the "public" directory, allowing clients to access the frontend assets such as HTML, CSS, and JavaScript files. This setup enables the server to deliver the necessary resources for the client-side application to function properly when users access the root URL or any other routes that serve static content. By organizing static assets in a dedicated directory, we can efficiently manage and serve the frontend resources while keeping the server code clean and focused on handling API requests and real-time communication.
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieParser())
 // Security middleware
 app.use(helmet({
@@ -101,7 +101,7 @@ app.use('/api/status', statusRoutes);
 app.use('/api/ai', aiRoutes);
 
 // Static files for public status page
-app.use('/status-page', express.static(path.join(__dirname, '../../public/status-page')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Root endpoint
 // app.get('/', (req, res) => {
