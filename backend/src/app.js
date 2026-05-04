@@ -118,7 +118,9 @@ app.use('/status-page', express.static(path.join(__dirname, '../../public/status
 //   });
 // });
 
-res.sendFile(path.join(__dirname, '../../public/index.html'));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../public/index.html'));
+});
 
 // API Documentation endpoint (simple version)
 app.get('/api/docs', (req, res) => {
