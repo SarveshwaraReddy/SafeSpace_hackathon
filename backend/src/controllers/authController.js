@@ -59,7 +59,7 @@ class AuthController {
       const cookieOpts = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: 'none',
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: '/',
       };
@@ -141,7 +141,7 @@ class AuthController {
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: 'none',
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: '/',
       });
@@ -543,7 +543,7 @@ class AuthController {
       res.cookie('token', newToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: 'none',
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: '/',
       });
