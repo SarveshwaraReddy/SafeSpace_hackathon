@@ -102,21 +102,23 @@ app.use('/api/ai', aiRoutes);
 app.use('/status-page', express.static(path.join(__dirname, '../../public/status-page')));
 
 // Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    name: 'SafeSpace - Smart Incident Response Platform API',
-    version: '1.0.0',
-    status: 'operational',
-    documentation: '/api/docs',
-    endpoints: {
-      auth: '/api/auth',
-      incidents: '/api/incidents',
-      responders: '/api/responders',
-      status: '/api/status',
-      ai: '/api/ai'
-    }
-  });
-});
+// app.get('/', (req, res) => {
+//   res.json({
+//     name: 'SafeSpace - Smart Incident Response Platform API',
+//     version: '1.0.0',
+//     status: 'operational',
+//     documentation: '/api/docs',
+//     endpoints: {
+//       auth: '/api/auth',
+//       incidents: '/api/incidents',
+//       responders: '/api/responders',
+//       status: '/api/status',
+//       ai: '/api/ai'
+//     }
+//   });
+// });
+
+res.sendFile(path.join(__dirname, '../../public/index.html'));
 
 // API Documentation endpoint (simple version)
 app.get('/api/docs', (req, res) => {
